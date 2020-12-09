@@ -1,7 +1,6 @@
 ---
-title: 'STAT 420: Homework 03'
-author: "Chaitanya Sood - csood2"
-date: 'Due: Tuesday, September 29 by 11:30 PM CT'
+title: 'STAT 420: Final Project Report'
+authors: "Team"
 output:
   pdf_document:
     toc: yes
