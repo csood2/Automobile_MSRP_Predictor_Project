@@ -2,10 +2,10 @@
 title: 'STAT 420: Final Project Report'
 authors: "Team"
 output:
-  pdf_document:
-    toc: yes
   html_document:
     theme: readable
+    toc: yes
+  pdf_document:
     toc: yes
 ---
 
@@ -78,13 +78,21 @@ levels(car_data_factored$Driven_Wheels)
 
 
 
-temp4 = one_hot(as.data.table(car_data_factored))
-
+car_data_factored = one_hot(as.data.table(car_data_factored))
 
 ```
 
 
-```{r}
 
+**Added a variable to dataset (ReleasedYearsAgo) which stores the value of the years ago this model was released**
+
+```{r}
+car_data_factored$ReleasedYearsAgo <- with(car_data_factored, 2020 - Year)
+```
+
+
+
+```{r}
+head(car_data_factored)
 ```
 
