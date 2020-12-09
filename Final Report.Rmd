@@ -1,0 +1,91 @@
+---
+title: 'STAT 420: Homework 03'
+author: "Chaitanya Sood - csood2"
+date: 'Due: Tuesday, September 29 by 11:30 PM CT'
+output:
+  pdf_document:
+    toc: yes
+  html_document:
+    theme: readable
+    toc: yes
+---
+
+
+```{r}
+#install.packages("mltools")
+library(mltools)
+library(data.table)
+```
+
+**Loading dataset in R from the CSV file, and converting **
+```{r}
+car_data = read.csv("Cars_data.csv")
+car_data = subset(car_data, select = -c(Vehicle.Style, Market.Category))
+
+#unique(car_data$Transmission.Type)
+#colnames(car_data)
+#unique(car_data$Engine.Fuel.Type)
+#unique(car_data$Driven_Wheels)
+unique(car_data$Vehicle.Size)
+#head(car_data)
+
+```
+
+**Removing the dew non automatic/manual transmission types, and storing this new data in car_data_transd dataframe**
+```{r}
+
+
+car_data_transd<-car_data[!(car_data$Transmission.Type=="AUTOMATED_MANUAL" | car_data$Transmission.Type=="DIRECT_DRIVE" | car_data$Transmission.Type=="UNKNOWN"),]
+
+unique(car_data_transd$Transmission.Type)
+
+```
+
+
+**Removing certain fuel types, keeping only gasoline and diesel. Storing the result in car_data_fuel dataframe**
+
+```{r}
+car_data_fuel<-car_data_transd[!(grepl("flex", car_data_transd$Engine.Fuel.Type, fixed = TRUE)
+|car_data_transd$Engine.Fuel.Type=="electric" | car_data_transd$Engine.Fuel.Type=="" | car_data_transd$Engine.Fuel.Type=="natural gas"),]
+
+unique(car_data_fuel$Engine.Fuel.Type)
+```
+
+**Assigning the different types of gasoline to a single "gasoline value". Now, the only two values for fuel type will be "gasoline" and "diesel" as visible below**
+
+```{r}
+car_data_fuel$Engine.Fuel.Type[car_data_fuel$Engine.Fuel.Type == "premium unleaded (required)" ] <- "gasoline"
+car_data_fuel$Engine.Fuel.Type[car_data_fuel$Engine.Fuel.Type == "regular unleaded" ] <- "gasoline"
+car_data_fuel$Engine.Fuel.Type[car_data_fuel$Engine.Fuel.Type == "premium unleaded (recommended)" ] <- "gasoline"
+
+unique(car_data_fuel$Engine.Fuel.Type)
+
+```
+
+
+
+**One hot encoding - converting categorical variables to values which R will understand**
+```{r}
+car_data_factored = car_data_fuel
+car_data_factored$Vehicle.Size <- factor(car_data_factored$Vehicle.Size)
+car_data_factored$Transmission.Type <- factor(car_data_factored$Transmission.Type)
+car_data_factored$Engine.Fuel.Type <- factor(car_data_factored$Engine.Fuel.Type)
+car_data_factored$Driven_Wheels <- factor(car_data_factored$Driven_Wheels)
+
+levels(car_data_factored$Vehicle.Size)
+levels(car_data_factored$Transmission.Type)
+levels(car_data_factored$Engine.Fuel.Type)
+levels(car_data_factored$Driven_Wheels)
+
+
+
+temp4 = one_hot(as.data.table(car_data_factored))
+
+
+```
+
+
+```{r}
+
+```
+
