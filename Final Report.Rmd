@@ -17,6 +17,7 @@ output:
 #install.packages("caret")
 #install.packages("dplyr")
 #install.packages("ggplots2")
+#install.packages('DT')
 library(mltools)
 library(data.table)
 library(knitr)
@@ -26,6 +27,7 @@ library(caret)
 library(faraway)
 library(lmtest)
 library(MASS)
+library(DT)
 
 ```
 
@@ -40,11 +42,12 @@ car_data = na.omit(car_data)
 #colnames(car_data)
 #unique(car_data$Engine.Fuel.Type)
 #unique(car_data$Driven_Wheels)
-#unique(car_data$Vehicle.Size)
+unique(car_data$Vehicle.Size)
 #car_data$Make<-NULL
 car_data$Model<- NULL
 car_data_info = car_data
 #head(car_data)
+colnames(car_data_info)
 
 ```
 
@@ -53,18 +56,31 @@ car_data_info = car_data
 
 **The dataset car_data now contains the following variables:**
 
-xx
-xx
-xx
-xx
+**Make** - The car brand
 
+**Year** - The year the car model was released
 
+**Engine.Fuel.Type** - The Fuel which the car runs on
 
+**Engine.HP** - The standard measure of power of the car's engine
 
+**Engine.Cylinders** - Number of Cylinders in the engine of the car
 
+**Transmission.Type** - Specifies the transmission type, self explanatory
 
+**Driven_Wheels** - Specifies to which wheels the car sends power
 
+**Number.of.Doors** - Number of doors in the car - self explanatory
 
+**Vehicle.Size** - Specifies the size of the car - compact, midsize, large
+
+**highway.MPG** - Estimated miles per gallon the car travels on the highway
+
+**city.mpg** - Estimated miles per gallon the car travels in the city
+
+**Popularity** - Value assigned based on Twitter scraping - is part of the original dataset
+
+**MSRP** - The response in our model. It stands for Manufacturer's Suggested Retail Price.
 
 
 
@@ -94,13 +110,13 @@ Once this is done, the MSRP Histogram looks like:
 hist( car_data_priced$MSRP, scientific = FALSE, col = "lightpink")
 ```
 
-**This is a reasonable distribution for our response variable. Additionally, price is a much more important factor in the expensive/luxury segment than in the mass market -  https://smallbusiness.chron.com/price-sensitivity-product-65805.html**
+This is a reasonable distribution for our response variable. Additionally, price is a much more important factor in the mass market than in the expensive/luxury segment so it is reasonable to restrict the price at $100,000. In fact, it may even be brought down further. -  https://smallbusiness.chron.com/price-sensitivity-product-65805.html
 
 
 
 **Removing the non automatic/manual transmission types, and storing this new data in car_data_transd dataframe**
 
-This is done for simplicity. There are very few automobiles with non automatic/manual transmissions, so our model would not be accurate at predicting these.
+This is done for simplicity. There are very few automobiles with non automatic/manual transmissions, so our model would not be accurate at predicting these even if we retained these values.
 
 ```{r}
 
@@ -115,7 +131,7 @@ unique(car_data_transd$Transmission.Type)
 
 **Removing certain fuel types, keeping only gasoline and diesel. Storing the result in car_data_fuel dataframe**
 
-This is done for simplicity when it came to predictors. We have a large dataset, so we can afford to omit certain types of automobiles. Additionally, since there were only few of non gasoline/diesel vehicles and we are targeting the mass market, this makes sense. We understand that the electric car segment is growing, and a more up-to-date dataset (this one spans all the way from 1990 to 2017) would help us cater to that market.
+This is once again done for simplicity when it comes to predictors. We have a large dataset, so we can afford to omit certain types of automobiles. Additionally, since there were only few of non gasoline/diesel vehicles and we are targeting the mass market, this makes sense. We understand that the electric car segment is growing, and a more up-to-date dataset (this one spans all the way from 1990 to 2017) would help us cater to that market.
 
 ```{r}
 car_data_fuel<-car_data_transd[!(grepl("flex", car_data_transd$Engine.Fuel.Type, fixed = TRUE)
@@ -142,7 +158,7 @@ unique(car_data_fuel$Engine.Fuel.Type)
 
 **Making categorical variables factors, and adding age variable**
 
-**The agevariable is essentially how many years ago the model was released. It is the "Year" in the dataset subtracted from the current year**
+**The age variable is essentially how many years ago the model was released. It is the "Year" in the dataset subtracted from the current year**
 ```{r}
 car_data_factored = car_data_fuel
 car_data_factored$Vehicle.Size <- factor(car_data_factored$Vehicle.Size)
@@ -179,7 +195,6 @@ car_data_factored$Year <- NULL
 
 
 **Simple additive models:**
-
 ```{r}
 set.seed(100)
 #train-test  split using 65% of the data
@@ -187,19 +202,159 @@ samplesize = round(0.65*nrow(car_data_factored), 0)
 index = sample(seq_len(nrow(car_data_factored)), size = samplesize)
 data_train = car_data_factored[index,]
 data_test = car_data_factored[-index,]
-msrp_mod = lm(MSRP ~. - Popularity, data_train)
-summary(msrp_mod)
+msrp_mod_additive = lm(MSRP ~. , data_train)
+summary(msrp_mod_additive)$r.sq
 msrp_mod2 = lm(MSRP ~ highway.MPG + Popularity, data_test)
 #summary(msrp_mod2)
 #anova(msrp_mod2, msrp_mod)
 ```
+```{r}
+calc_loocv_rmse = function(model) {
+  sqrt(mean((resid(model) / (1 - hatvalues(model))) ^ 2))
+}
+```
+
+
+
 **We get a fairly high value for Adjusted R. Squared, which is encouraging. We can now dig deeper and look at assumption violations and potential improvements in the model.**
 
 
 
+**Creating Polynomial Model with AIC Step**
 ```{r}
-alias(msrp_mod)
+
+
+#hipcenter_mod_both_aic = step(
+  #hipcenter_mod_start, 
+  #scope = hipcenter ~ Age + Weight + HtShoes + Ht + Seated + Arm + Thigh + Leg, 
+  #direction = "both")
+
+
+MSRP_big_mod_poly = lm(
+  MSRP ~ . + I(Engine.HP ^ 2) + I(ReleasedYearsAgo ^ 2) + I(city.mpg ^ 2) + I(highway.MPG ^ 2)  + I(Popularity ^ 2), 
+  data = data_train)
+
+MSRP_mod_both_aic_poly = step(MSRP_big_mod_poly, direction = "both", trace = 0)
+
 ```
+
+
+
+**Creating Linear Model with AIC Step**
+```{r}
+
+
+#hipcenter_mod_both_aic = step(
+  #hipcenter_mod_start, 
+  #scope = hipcenter ~ Age + Weight + HtShoes + Ht + Seated + Arm + Thigh + Leg, 
+  #direction = "both")
+
+
+MSRP_big_mod_linear = lm(
+  MSRP ~ . , 
+  data = data_train)
+
+MSRP_mod_both_aic_lin = step(MSRP_big_mod_linear, direction = "both", trace = 0)
+
+summary(MSRP_mod_both_aic_lin)$r.sq
+```
+
+
+
+**Linear BIC**
+
+```{r}
+names(car_data)
+```
+
+```{r}
+calc_loocv_rmse = function(model) {
+  sqrt(mean((resid(model) / (1 - hatvalues(model))) ^ 2))
+}
+```
+
+
+```{r}
+msrp_mod_start = lm(MSRP ~ ., data = data_train)
+n = length(resid(msrp_mod_start))
+msrp_mod_linear_both_bic = step(msrp_mod_start, direction = "both", k = log(n), trace = 0)
+```
+
+
+**Polynomial BIC**
+
+```{r}
+msrp_mod_start2 = lm(MSRP ~ . + I(Engine.HP^2)  + I(city.mpg^2) + I(highway.MPG^2) + I(Popularity^2) - I( ReleasedYearsAgo^2), data = data_train)
+n = length(resid(msrp_mod_start2))
+msrp_mod_poly_both_bic = step( msrp_mod_start2, direction = "both", k = log(n), trace = 0)
+```
+
+
+
+
+
+
+
+**Metric Table: **
+
+```{r}
+to_insert_1 = c("msrp_mod_additive", calc_loocv_rmse(msrp_mod_additive), 
+                summary(msrp_mod_additive)$adj.r.sq, summary(msrp_mod_additive)$r.sq)
+
+to_insert_2 = c("MSRP_mod_both_aic_lin", calc_loocv_rmse(MSRP_mod_both_aic_lin) ,summary(MSRP_mod_both_aic_lin)$adj.r.sq,summary(MSRP_mod_both_aic_lin)$r.sq )
+
+to_insert_3 = c("MSRP_mod_both_aic_poly", calc_loocv_rmse(MSRP_mod_both_aic_poly) ,summary(MSRP_mod_both_aic_poly)$adj.r.sq,summary(MSRP_mod_both_aic_poly)$r.sq )
+
+
+to_insert_4 = c("msrp_mod_linear_both_bic", calc_loocv_rmse(msrp_mod_linear_both_bic) ,summary(msrp_mod_linear_both_bic)$adj.r.sq,summary(msrp_mod_linear_both_bic)$r.sq )
+
+to_insert_5 = c("msrp_mod_poly_both_bic", calc_loocv_rmse(msrp_mod_poly_both_bic) ,summary(msrp_mod_poly_both_bic)$adj.r.sq,summary(msrp_mod_poly_both_bic)$r.sq )
+
+
+dataframe.values = c(to_insert_1, to_insert_2, to_insert_3, to_insert_4, to_insert_5)
+dataframe = matrix(dataframe.values,nrow=5 ,byrow = T)
+colnames(dataframe) = c("Model Name","calc_loocv_rmse","Adj. R-Sq.", "R-Sq.")
+
+datatable(dataframe)
+
+```
+
+```{r}
+msrp_mod_additive$call
+```
+
+
+```{r}
+MSRP_mod_both_aic_lin$call
+```
+
+
+```{r}
+MSRP_mod_both_aic_poly$call
+```
+
+
+```{r}
+msrp_mod_linear_both_bic$call
+
+```
+
+```{r}
+msrp_mod_poly_both_bic$call
+```
+
+
+**We see that these are all fairly similar models, and the two which are somewhat different are MSRP_mod_both_aic_poly and msrp_mod_additive. These are also the ones with higher values for the listed metrics. So, we will now focus on these models**
+
+
+
+
+
+
+
+
+
+
 
 
 **Assumptions**
@@ -222,7 +377,7 @@ assumption_tester = function(model) {
   
   #normality test
   print("Shapiro test:")
-  print(shapiro.test(model$residuals[0:5000]))
+  print(shapiro.test(resid(model)[0:5000]))
   hist(model$resid)
   
 
@@ -249,7 +404,7 @@ assumption_tester = function(model) {
 
 
 ```{r}
-assumption_tester(msrp_mod)
+#assumption_tester(msrp_mod)
 ```
 
 
@@ -272,6 +427,7 @@ msrp_mod_no_cyl = lm(MSRP ~. - Popularity - Engine.Cylinders, data_train)
 vif(msrp_mod_no_cyl)[vif(msrp_mod_no_cyl) > 10]
 ```
 
+
 **We can further considering removing highway.MPG , since this issue is probably being caused by the highway.MPG and city.mpg being closely related**
 
 ```{r}
@@ -280,15 +436,14 @@ vif(msrp_mod_no_cyl_highmpg)[vif(msrp_mod_no_cyl_highmpg) > 5]
 
 ```
 
-**Now, we can see that none of the VIFs are more than 5, which is well below the threshold.**
 
+**Now, we can see that none of the VIFs are more than 5, which is well below the threshold.**
 
 
 ```{r}
 assumption_tester(msrp_mod_no_cyl_highmpg)
 ```
 **We see that we have given up on some prediction accuracy in order to satisfy the model assumption**
-
 
 
 ## Influential Points:
@@ -313,21 +468,31 @@ assumption_tester(msrp_mod_influential_fix)
 
 **Since our response variable (MSRP) is strictly positive, we can consider Box-Cox transformations**
 ```{r}
+boxcox(msrp_mod_influential_fix, plotit = TRUE, lambda = seq(0.1, 0.3, by = 0.1))
+```
+
+
+```{r}
+msrp_mod_cox = lm((((MSRP ^ 0.2) - 1) / 0.2) ~ .  - Popularity - Engine.Cylinders - highway.MPG, data = data_train, 
+                              subset = msrp_mod_no_cyl_highmpg_cd <= 4/length(msrp_mod_no_cyl_highmpg_cd))
+
+msrp_mod_log = lm(log(MSRP) ~ .  - Popularity - Engine.Cylinders - highway.MPG, data = data_train, 
+                              subset = msrp_mod_no_cyl_highmpg_cd <= 4/length(msrp_mod_no_cyl_highmpg_cd))
+
+
+```
+
+
+```{r}
+assumption_tester(msrp_mod_log)
 
 ```
 
 
 
-
-
-
-
-
-
-
-
-
-
+```{r}
+assumption_tester(msrp_mod_cox)
+```
 
 
 
