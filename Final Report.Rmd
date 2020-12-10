@@ -24,6 +24,7 @@ library(data.table)
 ```{r}
 car_data = read.csv("Cars_data.csv")
 car_data = subset(car_data, select = -c(Vehicle.Style, Market.Category))
+car_data = na.omit(car_data)
 
 #unique(car_data$Transmission.Type)
 #colnames(car_data)
@@ -41,7 +42,7 @@ car_data$Model<- NULL
 ```{r}
 
 
-car_data_priced<-car_data[!(car_data$MSRP>100000 | car_data$MSRP<3000 ),]
+car_data_priced<-car_data[!(car_data$MSRP>100000 | car_data$MSRP< 10000 ),]
 
 range(car_data_priced$MSRP)
 
@@ -112,9 +113,7 @@ car_data_factored$ReleasedYearsAgo <- with(car_data_factored, 2020 - Year)
 
 ```
 
-
-
-**Removing repetitive variable(s)**
+**Removing repetitive/unnecessary variable(s)**
 
 ```{r}
 car_data_factored$Year <- NULL
@@ -146,6 +145,24 @@ msrp_mod2 = lm(MSRP ~ highway.MPG + Popularity, data_test)
 alias(msrp_mod)
 ```
 
+
+
+**Trying Polynomial Model with AIC choice**
+```{r}
+MSRP_big_mod = lm(
+  MSRP ~ . + I(Engine.HP ^ 2) + I(ReleasedYearsAgo ^ 2) + I(city.mpg ^ 2) + I(highway.MPG ^ 2) +  + I(Popularity ^ 2), 
+  data = data_train)
+
+MSRP_mod_back_aic = step(MSRP_big_mod, direction = "backward", trace = 0)
+
+summary(MSRP_mod_back_aic)
+
+```
+
+
+
+
+
 **Assumptions**
 
 
@@ -160,11 +177,6 @@ plot_func = function(model, pointcol = "blue",linecol = "green") {
 ```{r}
 library(car)
 assumption_tester = function(model) {
-  par(mfrow = c(1, 2))
-
-  plot(fitted(model), resid(model), col = "grey", pch = 20,
-       xlab = "Fitted", ylab = "Residuals", main = "Fitted versus Residuals")
-  abline(h = 0, col = "darkorange", lwd = 2)
   
   qqnorm(resid(model), main = "Normal Q-Q Plot", col = "darkgrey")
   qqline(resid(model), col = "dodgerblue", lwd = 2)
@@ -181,6 +193,7 @@ assumption_tester = function(model) {
   
   #Constant Variance
   plot_func(model)
+  hist(model$resid)
   
 }
 
@@ -188,74 +201,40 @@ assumption_tester = function(model) {
 
 
 ```{r}
-assumption_tester(msrp_mod)
-```
-
-
-
-**Trying Polynomial Models**
-```{r}
-MSRP_big_mod = lm(
-  log(MSRP) ~ . + I(Engine.HP ^ 2) + I(ReleasedYearsAgo ^ 2), 
-  data = data_train)
-
-MSRP_mod_back_aic = step(MSRP_big_mod, direction = "backward", trace = 0)
-
-summary(MSRP_mod_back_aic)$adj.r.sq
-
-```
-
-```{r}
-n = length(resid(MSRP_big_mod))
-MSRP_mod_back_bic = step(MSRP_big_mod, direction = "backward", k = log(n), trace = 0)
-summary(MSRP_mod_back_bic)$adj.r.sq
-is.factor(data_train$Engine.Cylinders)
-```
-
-
-
-
-
-```{r}
-MSRP_all_int = lm(
-  log(MSRP) ~ . + I(Engine.HP ^ 2) + I(ReleasedYearsAgo ^ 2), 
-  data = data_train)
-
-MSRP_mod_back_aic = step(MSRP_big_mod, direction = "backward", trace = 0)
-
-summary(MSRP_mod_back_aic)$adj.r.sq
-
-```
-
-```{r}
-n = length(resid(MSRP_big_mod))
-MSRP_mod_back_bic = step(MSRP_big_mod, direction = "backward", k = log(n), trace = 0)
-summary(MSRP_mod_back_bic)$adj.r.sq
-
+assumption_tester(MSRP_big_mod)
 ```
 
 
 ```{r}
-#summary(MSRP_mod_back_aic)
+#alias(MSRP_mod_back_aic)
+#assumption_tester(MSRP_mod_back_aic)
+```
+
+
+```{r}
+car_removed_predictors = lm(log(MSRP) ~ Engine.Fuel.Type + log(Engine.HP) +  Transmission.Type + 
+    Driven_Wheels + Number.of.Doors + 
+    I(ReleasedYearsAgo^2) + I(city.mpg^2) + 
+    I(highway.MPG^2) + I(Popularity^2), data = data_train)
 ```
 
 ```{r}
-
-assumption_tester(MSRP_mod_back_aic)
+assumption_tester(car_removed_predictors)
 ```
+
+```{r}
+summary(car_removed_predictors)
+```
+
 
 
 **Making model improvements**
 
 ```{r}
-head(car_data_factored)
+#head(data_train)
 
-car_model = lm (MSRP ~ ., data = car_data_factored)
-aic_back = step(car_model, direction = "back")
-
-```
-
-```{r}
+car_model = lm (MSRP ~ ., data = data_train)
+aic_back = step(car_model, direction = "back", trace = 0)
 summary(aic_back)
 
 ```
@@ -263,7 +242,7 @@ summary(aic_back)
 
 
 ```{r}
-plot( MSRP~Engine.HP, data = car_data_factored)
+plot( MSRP~Engine.HP, data = car_data_factored, scientific = FALSE)
 
 hist( car_data_factored$MSRP, scientific = FALSE)
 
