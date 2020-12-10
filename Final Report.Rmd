@@ -31,6 +31,7 @@ library(DT)
 
 ```
 
+## Data Processing
 
 **Loading dataset in R from the CSV file, and removing some columns which are not needed**
 ```{r}
@@ -81,7 +82,6 @@ colnames(car_data_info)
 **Popularity** - Value assigned based on Twitter scraping - is part of the original dataset
 
 **MSRP** - The response in our model. It stands for Manufacturer's Suggested Retail Price.
-
 
 
 
@@ -156,7 +156,7 @@ unique(car_data_fuel$Engine.Fuel.Type)
 
 
 
-**Making categorical variables factors, and adding age variable**
+#### Making categorical variables factors, and adding age variable
 
 **The age variable is essentially how many years ago the model was released. It is the "Year" in the dataset subtracted from the current year**
 ```{r}
@@ -216,20 +216,12 @@ calc_loocv_rmse = function(model) {
 
 
 
-**We get a fairly high value for Adjusted R. Squared, which is encouraging. We can now dig deeper and look at assumption violations and potential improvements in the model.**
+**We get a fairly high value for Adjusted R. Squared, which is encouraging. We now consider some other models as well**
 
 
 
-**Creating Polynomial Model with AIC Step**
+**Creating Quadratic Model with AIC Step**
 ```{r}
-
-
-#hipcenter_mod_both_aic = step(
-  #hipcenter_mod_start, 
-  #scope = hipcenter ~ Age + Weight + HtShoes + Ht + Seated + Arm + Thigh + Leg, 
-  #direction = "both")
-
-
 MSRP_big_mod_poly = lm(
   MSRP ~ . + I(Engine.HP ^ 2) + I(ReleasedYearsAgo ^ 2) + I(city.mpg ^ 2) + I(highway.MPG ^ 2)  + I(Popularity ^ 2), 
   data = data_train)
@@ -260,19 +252,13 @@ summary(MSRP_mod_both_aic_lin)$r.sq
 ```
 
 
-
-**Linear BIC**
-
-```{r}
-names(car_data)
-```
-
 ```{r}
 calc_loocv_rmse = function(model) {
   sqrt(mean((resid(model) / (1 - hatvalues(model))) ^ 2))
 }
 ```
 
+**Creating Linear Model with BIC Step**
 
 ```{r}
 msrp_mod_start = lm(MSRP ~ ., data = data_train)
@@ -281,16 +267,13 @@ msrp_mod_linear_both_bic = step(msrp_mod_start, direction = "both", k = log(n), 
 ```
 
 
-**Polynomial BIC**
+**Creating Quadratic Model with BIC Step**
 
 ```{r}
 msrp_mod_start2 = lm(MSRP ~ . + I(Engine.HP^2)  + I(city.mpg^2) + I(highway.MPG^2) + I(Popularity^2) - I( ReleasedYearsAgo^2), data = data_train)
 n = length(resid(msrp_mod_start2))
 msrp_mod_poly_both_bic = step( msrp_mod_start2, direction = "both", k = log(n), trace = 0)
 ```
-
-
-
 
 
 
@@ -344,12 +327,7 @@ msrp_mod_poly_both_bic$call
 ```
 
 
-**We see that these are all fairly similar models, and the two which are somewhat different are MSRP_mod_both_aic_poly and msrp_mod_additive. These are also the ones with higher values for the listed metrics. So, we will now focus on these models**
-
-
-
-
-
+**We see that these are all fairly similar models, and the two which are somewhat different are MSRP_mod_both_aic_poly and msrp_mod_poly_both_bic These two consistently give marginally better values for the metrics. We choose to pursue the model MSRP_mod_both_aic_poly for now since it uses an extra variable and has a very slightly better standing metric-wise.**
 
 
 
@@ -418,7 +396,7 @@ assumption_tester = function(model) {
 
 ## Managing Assumption Violations
 
-## #Multicollinearity
+### Multicollinearity
 
 **We can look into removing the Engine.Cylinders variable and seeing how this impacts the model**
 
@@ -478,7 +456,6 @@ msrp_mod_cox = lm((((MSRP ^ 0.2) - 1) / 0.2) ~ .  - Popularity - Engine.Cylinder
 
 msrp_mod_log = lm(log(MSRP) ~ .  - Popularity - Engine.Cylinders - highway.MPG, data = data_train, 
                               subset = msrp_mod_no_cyl_highmpg_cd <= 4/length(msrp_mod_no_cyl_highmpg_cd))
-
 
 ```
 
