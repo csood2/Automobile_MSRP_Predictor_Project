@@ -13,6 +13,8 @@ output:
 ```{r}
 #install.packages("mltools")
 #install.packages("caret")
+#install.packages("dplyr")
+#install.packages("ggplots2")
 library(mltools)
 library(data.table)
 ```
@@ -27,7 +29,7 @@ car_data = subset(car_data, select = -c(Vehicle.Style, Market.Category))
 #colnames(car_data)
 #unique(car_data$Engine.Fuel.Type)
 #unique(car_data$Driven_Wheels)
-unique(car_data$Vehicle.Size)
+#unique(car_data$Vehicle.Size)
 car_data$Make<-NULL
 car_data$Model<- NULL
 #head(car_data)
@@ -86,22 +88,25 @@ unique(car_data_fuel$Engine.Fuel.Type)
 
 
 
-**One hot encoding - converting categorical variables to values which R will understand**
+**Making categorical variables factors, and adding age variable**
 ```{r}
 car_data_factored = car_data_fuel
 car_data_factored$Vehicle.Size <- factor(car_data_factored$Vehicle.Size)
 car_data_factored$Transmission.Type <- factor(car_data_factored$Transmission.Type)
 car_data_factored$Engine.Fuel.Type <- factor(car_data_factored$Engine.Fuel.Type)
 car_data_factored$Driven_Wheels <- factor(car_data_factored$Driven_Wheels)
+car_data_factored$Engine.Cylinders <- factor(car_data_factored$Engine.Cylinders)
+car_data_factored$Number.of.Doors <- factor(car_data_factored$Number.of.Doors)
 
 levels(car_data_factored$Vehicle.Size)
 levels(car_data_factored$Transmission.Type)
 levels(car_data_factored$Engine.Fuel.Type)
 levels(car_data_factored$Driven_Wheels)
+levels(car_data_factored$Engine.Cylinders)
+levels(car_data_factored$Number.of.Doors)
 
 
-
-car_data_factored = one_hot(as.data.table(car_data_factored))
+#car_data_factored = one_hot(as.data.table(car_data_factored))
 
 car_data_factored$ReleasedYearsAgo <- with(car_data_factored, 2020 - Year)
 
@@ -109,25 +114,17 @@ car_data_factored$ReleasedYearsAgo <- with(car_data_factored, 2020 - Year)
 
 
 
-**Added a variable to dataset (ReleasedYearsAgo) which stores the value of the years ago this model was released**
+**Removing repetitive variable(s)**
 
 ```{r}
-
-car_data$Year <- NULL
 car_data_factored$Year <- NULL
-car_data_factored$Engine.Fuel.Type_diesel <- NULL
-car_data_factored$Transmission.Type_MANUAL <- NULL
-car_data_factored$Vehicle.Size_Midsize   <- NULL
-car_data_factored$`Driven_Wheels_rear wheel drive` <- NULL
 ```
 
 
 **Modeling**
 
 ```{r}
-#install.packages("dplyr")
-#install.packages("ggplots2")
-#install.packages("caret")
+
 library(dplyr)
 library(ggplot2)
 library(caret)
@@ -138,32 +135,113 @@ index = sample(seq_len(nrow(car_data_factored)), size = samplesize)
 data_train = car_data_factored[index,]
 data_test = car_data_factored[-index,]
 msrp_mod = lm(MSRP ~., data_train)
-#summary(msrp_mod)
+summary(msrp_mod)
 msrp_mod2 = lm(MSRP ~ highway.MPG + Popularity, data_test)
-summary(msrp_mod2)
+#summary(msrp_mod2)
 #anova(msrp_mod2, msrp_mod)
 ```
 
-
-**Assumptions**
 
 ```{r}
 alias(msrp_mod)
 ```
 
+**Assumptions**
+
 
 ```{r}
-#linearity
-resact = data.frame(residual = msrp_mod$residuals, fitted = msrp_mod$fitted.values)
-resact %>% ggplot(aes(fitted, residual)) + geom_point() + geom_smooth() + geom_hline(aes(yintercept = 0)) + 
-    theme(panel.grid = element_blank(), panel.background = element_blank())
-#normality test
-shapiro.test(msrp_mod$residuals[0:5000])
+plot_func = function(model, pointcol = "blue",linecol = "green") {
+  plot(fitted(model), resid(model), col = pointcol, pch = 20, xlab = "Fitted", ylab = "Residuals")
+  abline(h = 0, col = linecol, lwd = 2)
 
+}
+```
+
+```{r}
 library(car)
-#multicollinearity
-vif = vif(msrp_mod)
-max(vif)
+assumption_tester = function(model) {
+  par(mfrow = c(1, 2))
+
+  plot(fitted(model), resid(model), col = "grey", pch = 20,
+       xlab = "Fitted", ylab = "Residuals", main = "Fitted versus Residuals")
+  abline(h = 0, col = "darkorange", lwd = 2)
+  
+  qqnorm(resid(model), main = "Normal Q-Q Plot", col = "darkgrey")
+  qqline(resid(model), col = "dodgerblue", lwd = 2)
+  
+  #normality test
+  print(shapiro.test(model$residuals[0:5000]))
+  
+
+  #multicollinearity
+  vif = vif(model)
+  print("Max VIF Value:")
+  print(max(vif))
+  print(vif)
+  
+  #Constant Variance
+  plot_func(model)
+  
+}
+
+```
+
+
+```{r}
+assumption_tester(msrp_mod)
+```
+
+
+
+**Trying Polynomial Models**
+```{r}
+MSRP_big_mod = lm(
+  log(MSRP) ~ . + I(Engine.HP ^ 2) + I(ReleasedYearsAgo ^ 2), 
+  data = data_train)
+
+MSRP_mod_back_aic = step(MSRP_big_mod, direction = "backward", trace = 0)
+
+summary(MSRP_mod_back_aic)$adj.r.sq
+
+```
+
+```{r}
+n = length(resid(MSRP_big_mod))
+MSRP_mod_back_bic = step(MSRP_big_mod, direction = "backward", k = log(n), trace = 0)
+summary(MSRP_mod_back_bic)$adj.r.sq
+is.factor(data_train$Engine.Cylinders)
+```
+
+
+
+
+
+```{r}
+MSRP_all_int = lm(
+  log(MSRP) ~ . + I(Engine.HP ^ 2) + I(ReleasedYearsAgo ^ 2), 
+  data = data_train)
+
+MSRP_mod_back_aic = step(MSRP_big_mod, direction = "backward", trace = 0)
+
+summary(MSRP_mod_back_aic)$adj.r.sq
+
+```
+
+```{r}
+n = length(resid(MSRP_big_mod))
+MSRP_mod_back_bic = step(MSRP_big_mod, direction = "backward", k = log(n), trace = 0)
+summary(MSRP_mod_back_bic)$adj.r.sq
+
+```
+
+
+```{r}
+#summary(MSRP_mod_back_aic)
+```
+
+```{r}
+
+assumption_tester(MSRP_mod_back_aic)
 ```
 
 
