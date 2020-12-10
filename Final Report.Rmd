@@ -2,16 +2,16 @@
 title: 'STAT 420: Final Project Report'
 authors: "Team"
 output:
-  pdf_document:
-    toc: yes
   html_document:
     theme: readable
+    toc: yes
+  pdf_document:
     toc: yes
 ---
 
 
 
-##Installing packages (commented out) and loading libraries for future use.
+##  Installing packages (commented out) and loading libraries for future use.
 ```{r}
 #install.packages("mltools")
 #install.packages("caret")
@@ -20,6 +20,13 @@ output:
 library(mltools)
 library(data.table)
 library(knitr)
+library(dplyr)
+library(ggplot2)
+library(caret)
+library(faraway)
+library(lmtest)
+library(MASS)
+
 ```
 
 
@@ -42,7 +49,7 @@ car_data_info = car_data
 ```
 
 
-##Dataset Overview:
+## Dataset Overview:
 
 **The dataset car_data now contains the following variables:**
 
@@ -55,7 +62,15 @@ xx
 
 
 
-##Engineering the data
+
+
+
+
+
+
+
+
+## Engineering the data
 
 ```{r}
 hist( car_data$MSRP, scien = FALSE, col = "lightblue")
@@ -160,30 +175,159 @@ car_data_factored$Year <- NULL
 ```
 
 
-**Modeling**
+## Modeling
+
+
+**Simple additive models:**
 
 ```{r}
-
-library(dplyr)
-library(ggplot2)
-library(caret)
 set.seed(100)
 #train-test  split using 65% of the data
 samplesize = round(0.65*nrow(car_data_factored), 0)
 index = sample(seq_len(nrow(car_data_factored)), size = samplesize)
 data_train = car_data_factored[index,]
 data_test = car_data_factored[-index,]
-msrp_mod = lm(MSRP ~., data_train)
+msrp_mod = lm(MSRP ~. - Popularity, data_train)
 summary(msrp_mod)
 msrp_mod2 = lm(MSRP ~ highway.MPG + Popularity, data_test)
 #summary(msrp_mod2)
 #anova(msrp_mod2, msrp_mod)
 ```
+**We get a fairly high value for Adjusted R. Squared, which is encouraging. We can now dig deeper and look at assumption violations and potential improvements in the model.**
+
 
 
 ```{r}
 alias(msrp_mod)
 ```
+
+
+**Assumptions**
+
+
+```{r}
+plot_func = function(model, pointcol = "blue",linecol = "green") {
+  plot(fitted(model), resid(model), col = pointcol, pch = 20, xlab = "Fitted", ylab = "Residuals")
+  abline(h = 0, col = linecol, lwd = 2)
+
+}
+```
+
+```{r}
+
+assumption_tester = function(model) {
+  
+  qqnorm(resid(model), main = "Normal Q-Q Plot", col = "darkgrey")
+  qqline(resid(model), col = "dodgerblue", lwd = 2)
+  
+  #normality test
+  print("Shapiro test:")
+  print(shapiro.test(model$residuals[0:5000]))
+  hist(model$resid)
+  
+
+  #multicollinearity
+  vif_vals = vif(model)
+  print("Max VIF Value:")
+  print(max(vif_vals))
+  print(vif_vals[vif_vals > 10])
+  
+  #Constant Variance
+  plot_func(model)
+  
+  print("Breusch-Pagan test:")
+  print(bptest(model))
+  
+  print("Adjusted R-Squared:")
+  print(summary(model)$r.sq)
+  
+  
+}
+
+```
+
+
+
+```{r}
+assumption_tester(msrp_mod)
+```
+
+
+**Here, we can see that the VIF values for Engine.Cylinders and highway.MPG are fairly high if we go with a threshold of 10. There does appear to be some multicollinearity **
+
+**The Shapiro-Wilk test and the qq plot also indicate non-normality**
+
+**The constant variance assumption (based on the fitted vs residuals graph and the BP-test) also does appear to be violated **
+
+
+
+## Managing Assumption Violations
+
+## #Multicollinearity
+
+**We can look into removing the Engine.Cylinders variable and seeing how this impacts the model**
+
+```{r}
+msrp_mod_no_cyl = lm(MSRP ~. - Popularity - Engine.Cylinders, data_train)
+vif(msrp_mod_no_cyl)[vif(msrp_mod_no_cyl) > 10]
+```
+
+**We can further considering removing highway.MPG , since this issue is probably being caused by the highway.MPG and city.mpg being closely related**
+
+```{r}
+msrp_mod_no_cyl_highmpg = lm(MSRP ~. - Popularity - Engine.Cylinders - highway.MPG, data_train)
+vif(msrp_mod_no_cyl_highmpg)[vif(msrp_mod_no_cyl_highmpg) > 5]
+
+```
+
+**Now, we can see that none of the VIFs are more than 5, which is well below the threshold.**
+
+
+
+```{r}
+assumption_tester(msrp_mod_no_cyl_highmpg)
+```
+**We see that we have given up on some prediction accuracy in order to satisfy the model assumption**
+
+
+
+## Influential Points:
+
+We can consider removing influential points from our model
+
+```{r}
+msrp_mod_no_cyl_highmpg_cd = cooks.distance(msrp_mod_no_cyl_highmpg)
+msrp_mod_influential_fix = lm(MSRP ~. - Popularity - Engine.Cylinders - highway.MPG, data = data_train, 
+                              subset = msrp_mod_no_cyl_highmpg_cd <= 4/length(msrp_mod_no_cyl_highmpg_cd))
+
+assumption_tester(msrp_mod_influential_fix)
+```
+
+**This has marginally helped our value of adjusted R-squared, which is once more encouraging**
+
+
+**In order to work towards the normality assumption and the multicollinearity, we will need to consider transformations on our predictors and our response variables**
+
+
+## Transformations
+
+**Since our response variable (MSRP) is strictly positive, we can consider Box-Cox transformations**
+```{r}
+
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -201,41 +345,6 @@ summary(MSRP_mod_back_aic)
 
 
 
-**Assumptions**
-
-
-```{r}
-plot_func = function(model, pointcol = "blue",linecol = "green") {
-  plot(fitted(model), resid(model), col = pointcol, pch = 20, xlab = "Fitted", ylab = "Residuals")
-  abline(h = 0, col = linecol, lwd = 2)
-
-}
-```
-
-```{r}
-library(car)
-assumption_tester = function(model) {
-  
-  qqnorm(resid(model), main = "Normal Q-Q Plot", col = "darkgrey")
-  qqline(resid(model), col = "dodgerblue", lwd = 2)
-  
-  #normality test
-  print(shapiro.test(model$residuals[0:5000]))
-  
-
-  #multicollinearity
-  vif = vif(model)
-  print("Max VIF Value:")
-  print(max(vif))
-  print(vif)
-  
-  #Constant Variance
-  plot_func(model)
-  hist(model$resid)
-  
-}
-
-```
 
 
 ```{r}
@@ -265,7 +374,7 @@ assumption_tester(car_removed_predictors)
 
 ```{r}
 alias(car_removed_predictors)
-summary(car_removed_predictors)
+#summary(car_removed_predictors)
 ```
 
 
