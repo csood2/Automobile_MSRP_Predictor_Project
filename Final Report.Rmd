@@ -9,10 +9,16 @@ output:
     toc: yes
 ---
 
+# Introduction
+
+
+
+# Methods
+
 
 
 ##  Installing packages (commented out) and loading libraries for future use.
-```{r}
+```{r warning=FALSE}
 #install.packages("mltools")
 #install.packages("caret")
 #install.packages("dplyr")
@@ -501,11 +507,13 @@ assumption_tester(chosen_model_trans2)
 
 ```
 
-**Using the log transformation, we have satisfied the assumption of normality of errors.**
+**Using the log transformation, we have satisfied the normality assumption.**
 
 **We can see that we have improved the p-value of the Shapiro-Wilk normality test from less than < 2.2e-16 to a value of roughly 0.2. This means we fail to reject the null hypothesis, which is what we want. This is a substantial improvement. **
 
-**Additionally, the histogram of the residuals and the Q-Q Plot are much better than before, both indicating that we have moved towards meeting the normality assumption.**
+**Additionally, the histogram of the residuals and the Q-Q Plot are much better than before, both indicating the same progress.**
+
+**While the adjusted R-Squared for the log transformed model is lower, we still prefer this model since it satisfies the normality assumption**
 
 
 ### Collinearity
@@ -515,13 +523,13 @@ summary(chosen_model_trans2)
 ```
 
 
-**As we saw from the VIF results, there are a few predictors which show sighns of multicollinearity. We can start by removing the predictor Engine.Cylinders, since all the dummy variables associated to it have high VIFs and their p-values are also high from the summary.**
+**As we saw from the VIF results, there are a few predictors which show signs of multicollinearity. We can start by removing the predictor Engine.Cylinders, since all the dummy variables associated to it have high VIFs and their p-values are also fairly high (from the summary).**
 
 
 
 ```{r}
-chosen_model_drop1 = lm(formula = log(MSRP) ~ Make + Engine.Fuel.Type + Engine.HP + 
-    Transmission.Type + Driven_Wheels  + 
+chosen_model_drop1 = lm(formula = log(MSRP) ~ Make + Engine.Fuel.Type + Engine.HP +
+    Transmission.Type + Driven_Wheels + Number.of.Doors + 
     Vehicle.Size + highway.MPG + ReleasedYearsAgo + I(Engine.HP^2) + 
     I(ReleasedYearsAgo^2) + I(city.mpg^2) + I(highway.MPG^2), 
     data = data_train, subset = cox_sub)
@@ -536,6 +544,12 @@ summary(chosen_model_drop1)
 ```{r}
 assumption_tester(chosen_model_drop1)
 ```
+
+**We choose to keep the remaining predictors with high VIF values. We make this decision since all the predictors with high VIFs are caused due to the inclusion of polynomial predictors of the same variables. All the predictors with high VIF vales are significant to the model (as visible in the summary) and it makes sense to retain them.**
+
+
+
+# Results
 
 ## Testing 
 
@@ -553,7 +567,6 @@ test_predictions = exp(test_predictions_log)
 
 ```{r}
 
-
 data = data.frame(
   x= test_predictions,
   y= data_test$MSRP
@@ -567,6 +580,10 @@ plot(data$x, data$y,
      xlab="Predicted Value of MSRP", ylab="Actual Value of MSRP",
      main="Predicted vs Actual MSRP"
      )
+
+abline(0,1, col="navyblue",  lwd = 2)
+
 ```
 
 
+**Since we are plotting the predicted vs the actual MSRPs of the test data, we expect the chart to be oriented at 45 degrees positively, as depicted by the dark blue line. Other than one outlier ~(65000, 47000), our predictions are fairly closely matched to the actual values of the MSRP**
