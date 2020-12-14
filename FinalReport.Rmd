@@ -1,0 +1,771 @@
+---
+title: 'AutoPrice'
+subtitle: 'Stat-420 Final Project Report'
+output:
+  html_document:
+    theme: readable
+    toc: yes
+  pdf_document:
+    toc: yes
+---
+
+# Introduction
+
+The main goal of this project is to find a prediction model for Manufacturer's Suggested Retail Price (MSRP) based on features of an automobile.
+
+Our dataset, called Car Features and MSRP, includes specifications such as make, model, release year, and transmission of certain automobiles released between 1990 and 2017. This data was originally gathered from Edmunds and Twitter by Sam Keene and posted on 'Kaggle' (kaggle.com/CooperUnion/cardataset) by 'CooperUnion'. 
+
+This project can have multiple use cases:
+
+1) Can help manufacturers place their products in the market
+2) Can help car buyers decide on the appropriate price segment to consider when purchasing based on specifications
+3) Can help us identify what factors impact the prices of cars
+4) Can help decide whether a car purchase is a good value for money or not
+
+There are 11,914 observations of 16 variables in the complete dataset. Among the variables we have horsepower, price, engine fuel type, release year, make, model, and engine cylinders. The relevant variables are explained later in the report. The response we are focusing on is "MSRP" which is Manufacturer's Suggested Retail Price. Predictive modeling is a ubiquitous concept in today's world, and is not restricted to Information Technology or financial markets. It has found usage across the world in almost every field. Our project can be an example of how the automobile industry can utilize this idea, though we are sure that it already is being used widely!
+
+We decided to pursue this topic and dataset due to a shared interest in automobiles. Additionally, the potential real-world applications of this project are interesting. We are confident that we can leverage the knowledge we have gained over this semester on this project.
+
+
+# Methods
+
+
+## Libraries
+
+**Installing packages (commented out) and loading libraries for future use.**
+
+```{r message=FALSE, warning=FALSE}
+#install.packages("mltools")
+#install.packages("caret")
+#install.packages("dplyr")
+#install.packages("ggplots2")
+#install.packages('DT')
+library(mltools)
+library(data.table)
+library(knitr)
+library(dplyr)
+library(ggplot2)
+library(caret)
+library(faraway)
+library(lmtest)
+library(MASS)
+library(DT)
+
+```
+
+
+The libraries loaded above are used throughout the report. They have been collected in a single chunk for ease of viewing and convenience.
+
+
+## Data Loading
+
+**Loading dataset in R from the CSV file, and removing some columns and rows which are not needed or not complete:**
+
+```{r}
+car_data = read.csv("Cars_data.csv")
+temp = car_data
+car_data = na.omit(car_data)
+
+car_data$Model<- NULL
+car_data$Vehicle.Style<- NULL
+car_data$ Market.Category<- NULL
+
+
+# Debugging commands:
+#unique(car_data$Make)
+#colnames(car_data)
+#unique(car_data$Engine.Fuel.Type)
+#unique(car_data$Driven_Wheels)
+#unique(car_data$Vehicle.Size)
+#car_data_info = car_data
+#head(car_data)
+#colnames(car_data)
+
+```
+
+We decided to remove the model predictor since it would potentially lead to over-complication of the model. It would be too specific. 
+
+Similar reasons for removing market category and vehicle style. Vehicle style as a variable is also somewhat similar to vehicle size, which further reduced its relevance in our mind. The values stored in the vehicle style column were also not easy to process.
+
+
+## Dataset Overview:
+
+**The dataset car_data now contains the following variables:**
+
+**Make** - The car brand
+
+**Year** - The year the car model was released
+
+**Engine.Fuel.Type** - The Fuel which the car runs on
+
+**Engine.HP** - The standard measure of power of the car's engine
+
+**Engine.Cylinders** - Number of Cylinders in the engine of the car
+
+**Transmission.Type** - Specifies the transmission type, self explanatory
+
+**Driven_Wheels** - Specifies to which wheels the car sends power
+
+**Number.of.Doors** - Number of doors in the car - self explanatory
+
+**Vehicle.Size** - Specifies the size of the car - compact, midsize, large
+
+**highway.MPG** - Estimated miles per gallon the car travels on the highway
+
+**city.mpg** - Estimated miles per gallon the car travels in the city
+
+**Popularity** - Value assigned based on Twitter scraping - is part of the original dataset
+
+**MSRP** - The response in our model. It stands for Manufacturer's Suggested Retail Price.
+
+
+We will now be considering all variables other than MSRP as potential predictors.
+
+
+
+
+## Engineering the data
+
+```{r}
+hist( car_data$MSRP, col = "lightblue", main = "Histogram of car_data MSRP Values")
+```
+
+It is clear that some of the MSRP values in this dataset are too high. We consider dropping extremely high and extremely low values of MSRP from the dataset we will use to train and test. Additionally, price is a much more important factor in the mass market than in the expensive/luxury segment so it is reasonable to restrict the price at $48,500. In fact, it may even be brought down further. -  https://smallbusiness.chron.com/price-sensitivity-product-65805.html. Another factor in this decision was the fact that the dataset had very few observations of extremely high and extremely low MSRP. This exclusion of extreme values will help strengthen the model for the given range.
+
+
+**Removing extreme prices less than $8,500 and greater than $48,500**
+
+
+```{r}
+
+car_data_priced<-car_data[!(car_data$MSRP>48500 | car_data$MSRP< 8500 ),]
+range(car_data_priced$MSRP)
+
+```
+
+
+Once this is done, the MSRP Histogram looks like the following:
+
+```{r}
+hist( car_data_priced$MSRP, col = "lightpink", breaks = 40, main = "Histogram of car_data_priced MSRP Values")
+```
+
+This is a much more reasonable distribution for our response variable. 
+
+
+
+**Removing the non automatic/manual transmission types, and storing this new data in car_data_transd dataframe**
+
+This is done for simplicity and practicality. There are very few automobiles with non automatic/manual transmissions, so our model would probably not be accurate at predicting these even if we retained these values.
+
+```{r}
+
+
+car_data_transd<-car_data_priced[!(car_data_priced$Transmission.Type=="AUTOMATED_MANUAL" | car_data_priced$Transmission.Type=="DIRECT_DRIVE" | car_data_priced$Transmission.Type=="UNKNOWN"),]
+
+unique(car_data_transd$Transmission.Type)
+
+```
+
+
+
+**Removing certain fuel types, keeping only gasoline and diesel. Storing the result in car_data_fuel dataframe**
+
+This is once again done for simplicity when it comes to predictors. We have a large dataset, so we can afford to omit certain types of automobiles. Additionally, since there were only few of non gasoline/diesel vehicles and we are targeting the mass market, this makes sense. We understand that the electric car segment is growing, and a more up-to-date dataset (this one spans all the way from 1990 to 2017) would help us cater to that market.
+
+```{r}
+car_data_fuel<-car_data_transd[!(grepl("flex", car_data_transd$Engine.Fuel.Type, fixed = TRUE)
+|car_data_transd$Engine.Fuel.Type=="electric" | car_data_transd$Engine.Fuel.Type=="" | car_data_transd$Engine.Fuel.Type=="natural gas"),]
+
+unique(car_data_fuel$Engine.Fuel.Type)
+```
+
+
+**Assigning the different types of gasoline to a single "gasoline value". Now, the only two values for fuel type will be "gasoline" and "diesel" as visible below**
+
+Here, we combine the different types of gasoline into one, since the different types of gasolines are still gasoline.
+
+```{r}
+car_data_fuel$Engine.Fuel.Type[car_data_fuel$Engine.Fuel.Type == "premium unleaded (required)" ] <- "gasoline"
+car_data_fuel$Engine.Fuel.Type[car_data_fuel$Engine.Fuel.Type == "regular unleaded" ] <- "gasoline"
+car_data_fuel$Engine.Fuel.Type[car_data_fuel$Engine.Fuel.Type == "premium unleaded (recommended)" ] <- "gasoline"
+
+unique(car_data_fuel$Engine.Fuel.Type)
+
+```
+
+
+**Removing extremely rare brands in our dataset**
+
+We remove those car makes (brands) which occur less than 20 times out of the 7000+ observations we have in our current dataset.
+
+```{r}
+big_brands = names(which(table(car_data_fuel$Make)>20))
+
+small_removed = filter(car_data_fuel, Make %in% big_brands)
+
+
+```
+
+
+
+**Assigning factors for categorical cariables and creating ReleasedYearsAgo**
+
+The ReleasedYearsAgo added variable is essentially how many years ago the model was released. It is the "Year" in the dataset subtracted from the current year
+
+```{r}
+car_data_factored = small_removed
+
+#car_data_factored <- car_data_fuel[!(as.numeric(car_data_fuel$Make) %in% which(table(car_data_fuel$Make)<100)),]
+car_data_factored$Vehicle.Size <- factor(car_data_factored$Vehicle.Size)
+car_data_factored$Transmission.Type <- factor(car_data_factored$Transmission.Type)
+car_data_factored$Engine.Fuel.Type <- factor(car_data_factored$Engine.Fuel.Type)
+car_data_factored$Driven_Wheels <- factor(car_data_factored$Driven_Wheels)
+car_data_factored$Engine.Cylinders <- factor(car_data_factored$Engine.Cylinders)
+car_data_factored$Number.of.Doors <- factor(car_data_factored$Number.of.Doors)
+car_data_factored$Make <- factor(car_data_factored$Make, exclude = FALSE)
+
+
+
+
+levels(car_data_factored$Vehicle.Size)
+levels(car_data_factored$Transmission.Type)
+levels(car_data_factored$Engine.Fuel.Type)
+levels(car_data_factored$Driven_Wheels)
+levels(car_data_factored$Engine.Cylinders)
+levels(car_data_factored$Number.of.Doors)
+levels(car_data_factored$Make)
+
+
+car_data_factored$ReleasedYearsAgo <- with(car_data_factored, 2020 - Year)
+
+```
+
+**Removing repetitive/unnecessary column(s)**
+
+```{r}
+car_data_factored$Year <- NULL
+```
+
+
+## Exploring the Data
+
+**We create some plots which compare the potential predictors to the response variable (MSRP)**
+
+```{r}
+plot(MSRP ~ Engine.HP, data = car_data_factored,
+     main = "MSRP versus Engine Horse Power",
+     xlab = "Engine Horse Power",
+     col = "skyblue", pch = 20, las = 1, mgp = c(3,0.5,0))
+```
+
+
+
+```{r}
+options(scipen=5)
+plot(MSRP ~ Engine.Fuel.Type, data = car_data_factored,
+     main = "MSRP versus Fuel Type",
+     xlab = "Fuel Type",
+     col = "slateblue2", pch = 20,las = 1, mgp = c(3,0.5,0))
+```
+
+
+
+```{r}
+plot(MSRP ~ Engine.Cylinders, data = car_data_factored,
+     main = "MSRP versus Engine Cylinders",
+     xlab = "Engine Cylinder Count",
+     col = "maroon", pch = 20, las = 1, mgp = c(3,0.5,0))
+
+```
+
+```{r}
+plot(MSRP ~ Transmission.Type, data = car_data_factored,
+     main = "MSRP versus Transmission Type",
+     xlab = "Transmission Type",
+     col = "coral2", pch = 20, las = 1, mgp = c(3,0.5,0))
+
+```
+
+
+```{r}
+plot(MSRP ~ Vehicle.Size, data = car_data_factored,
+     main = "MSRP versus Vehicle Size",
+     xlab = "Vehicle Size",
+     col = "steelblue", pch = 20, las = 1, mgp = c(3,0.5,0))
+
+```
+
+
+**The graphs above verify our belief that the predictors in the dataset are definitely relevant in predicting the MSRP. Elaborating on some of the charts: **
+
+**1) The Horsepower vs MSRP graph shows that the MSRP increases as the horsepower of the engine increases. **
+
+**2) The Transmission Type vs MSRP graph shows that automatic vehicles are generally priced higher than manual ones.** 
+
+**3) The Cylinder vs MSRP plot shows that as the cylinder count in the engine increases, the MSRP increases.**
+
+
+**These findings bolster our conviction for creating this model.**
+
+
+## Modeling
+
+
+**Splitting data into train and test: **
+
+```{r}
+set.seed(100)
+
+#train-test split using 70% 
+
+samplesize = round(0.70*nrow(car_data_factored), 0)
+index = sample(seq_len(nrow(car_data_factored)), size = samplesize)
+
+data_train = car_data_factored[index,]
+data_test = car_data_factored[-index,]
+```
+
+
+**Creating a basic additive model:**
+
+```{r}
+msrp_mod_additive = lm(MSRP ~. , data_train)
+summary(msrp_mod_additive)$adj.r.sq
+```
+
+**We get a fairly high value for Adjusted R-squared, which is encouraging. We now consider some other models as well**
+
+
+
+**Creating Quadratic Model with AIC Step in both directions**
+
+```{r}
+MSRP_big_mod_poly = lm(
+  MSRP ~ . + I(Engine.HP ^ 2) + I(ReleasedYearsAgo ^ 2) + I(city.mpg ^ 2) + I(highway.MPG ^ 2)  + I(Popularity ^ 2), 
+  data = data_train)
+
+MSRP_mod_both_aic_poly = step(MSRP_big_mod_poly, direction = "both", trace = 0)
+
+```
+
+
+
+**Creating Linear Model with AIC Step in both directions**
+
+```{r}
+
+MSRP_big_mod_linear = lm(
+  MSRP ~ . , 
+  data = data_train)
+
+MSRP_mod_both_aic_lin = step(MSRP_big_mod_linear, direction = "both", trace = 0)
+
+summary(MSRP_mod_both_aic_lin)$r.sq
+```
+
+
+**Creating Linear Model with BIC Step in both directions**
+
+```{r}
+msrp_mod_start = lm(MSRP ~ ., data = data_train)
+n = length(resid(msrp_mod_start))
+msrp_mod_linear_both_bic = step(msrp_mod_start, direction = "both", k = log(n), trace = 0)
+```
+
+
+**Creating Quadratic Model with BIC Step in both directions**
+
+```{r}
+msrp_mod_start2 = lm(MSRP ~ . + I(Engine.HP^2)  + I(city.mpg^2) + I(highway.MPG^2) + I(Popularity^2) + I( ReleasedYearsAgo^2), data = data_train)
+n = length(resid(msrp_mod_start2))
+msrp_mod_poly_both_bic = step( msrp_mod_start2, direction = "both", k = log(n), trace = 0)
+```
+
+
+
+**Defining a function to calculate the calc_loocv_rmse **
+
+```{r}
+calc_loocv_rmse = function(model) {
+  sqrt(mean((resid(model) / (1 - hatvalues(model))) ^ 2))
+}
+```
+
+
+## Metric Table
+
+We create a table to compare the metrics calc_loocv_rmse, adjusted r squared, and r squared of the 5 models we have created. Based on this, we will decide which model to pursue futher.
+
+```{r}
+
+#this table compares the calc_loocv_rmse, adjusted r squared, and r squared
+
+to_insert_1 = c("msrp_mod_additive", calc_loocv_rmse(msrp_mod_additive), 
+                summary(msrp_mod_additive)$adj.r.sq, summary(msrp_mod_additive)$r.sq)
+
+to_insert_2 = c("MSRP_mod_both_aic_lin", calc_loocv_rmse(MSRP_mod_both_aic_lin) ,summary(MSRP_mod_both_aic_lin)$adj.r.sq,summary(MSRP_mod_both_aic_lin)$r.sq )
+
+to_insert_3 = c("MSRP_mod_both_aic_poly", calc_loocv_rmse(MSRP_mod_both_aic_poly) ,summary(MSRP_mod_both_aic_poly)$adj.r.sq,summary(MSRP_mod_both_aic_poly)$r.sq )
+
+
+to_insert_4 = c("msrp_mod_linear_both_bic", calc_loocv_rmse(msrp_mod_linear_both_bic) ,summary(msrp_mod_linear_both_bic)$adj.r.sq,summary(msrp_mod_linear_both_bic)$r.sq )
+
+to_insert_5 = c("msrp_mod_poly_both_bic", calc_loocv_rmse(msrp_mod_poly_both_bic) ,summary(msrp_mod_poly_both_bic)$adj.r.sq,summary(msrp_mod_poly_both_bic)$r.sq )
+
+
+dataframe.values = c(to_insert_1, to_insert_2, to_insert_3, to_insert_4, to_insert_5)
+dataframe = matrix(dataframe.values,nrow=5 ,byrow = T)
+colnames(dataframe) = c("Model Name","calc_loocv_rmse","Adj. R-Sq.", "R-Sq.")
+
+datatable(dataframe)
+
+```
+
+**Listing the composition of all the models**
+
+```{r}
+msrp_mod_additive$call
+```
+
+
+```{r}
+MSRP_mod_both_aic_lin$call
+```
+
+
+```{r}
+MSRP_mod_both_aic_poly$call
+```
+
+
+```{r}
+msrp_mod_linear_both_bic$call
+
+```
+
+```{r}
+msrp_mod_poly_both_bic$call
+```
+
+
+We see that these are all quite similar models, and the two which are somewhat different are MSRP_mod_both_aic_poly and msrp_mod_poly_both_bic. These two consistently give marginally better values for the metrics.
+
+**We choose to pursue the model MSRP_mod_both_aic_poly for now since it uses an extra variable (Number.of.Doors) and has a very slightly better standing according to adjusted R-Squared**
+
+
+```{r}
+#Renaming the model for convenience:
+chosen_model = MSRP_mod_both_aic_poly
+```
+
+
+## Improving the Model
+
+### Influential Values
+
+**We can consider removing influential points from our model**
+
+```{r}
+cd_chosen_mod = cooks.distance(chosen_model)
+length(cd_chosen_mod[cd_chosen_mod > 4 / length(cd_chosen_mod) ])
+
+cox_sub = cd_chosen_mod <= 4/length(cd_chosen_mod)
+```
+
+Of the 4817 points in our chosen model, 287 appear to be influential. We can consider removing these from our model
+
+
+**We reload the model, with the influential points removed: **
+
+```{r}
+chosen_model_uninf = lm(formula = MSRP ~ Make + Engine.Fuel.Type + Engine.HP + Engine.Cylinders + 
+    Transmission.Type + Driven_Wheels + Number.of.Doors + Vehicle.Size + 
+    highway.MPG + ReleasedYearsAgo + I(Engine.HP^2) + I(ReleasedYearsAgo^2) + 
+    I(city.mpg^2) + I(highway.MPG^2), data = data_train, subset = cox_sub)
+
+summary(chosen_model_uninf)$adj.r.sq
+```
+
+We can see that this removal of influential points has increased the adjusted R-squared from 0.83 to 0.87, which is expected and encouraging.
+
+
+
+## Satisfying Assumptions
+
+**Creating a few functions to evaluate the model assumptions: **
+
+The function below, assumption_tester, will help us reduce code repetition and assist with creating a thorough model.
+
+```{r}
+plot_func = function(model, pointcol = "slateblue3",linecol = "limegreen") {
+  plot(fitted(model), resid(model), col = pointcol, pch = 20, xlab = "Fitted", ylab = "Residuals", main = "Fitted vs Residuals")
+  abline(h = 0, col = linecol, lwd = 4)
+
+}
+```
+
+
+```{r}
+
+assumption_tester = function(model) {
+  
+  qqnorm(resid(model), main = "Normal Q-Q Plot", col = "darkgrey")
+  qqline(resid(model), col = "dodgerblue", lwd = 2)
+  
+  #normality test
+  print("Shapiro test:")
+  print(shapiro.test(resid(model)[0:5000]))
+  hist(model$resid, col = "skyblue3", main = "Histogram of Residuals")
+  
+
+  #multicollinearity
+  vif_vals = vif(model)
+  print(vif_vals[vif_vals > 5])
+  
+  #Constant Variance
+  plot_func(model)
+  
+  print("Breusch-Pagan test:")
+  print(bptest(model))
+  
+  print("Adjusted R-Squared:")
+  print(summary(model)$r.sq)
+  
+  print("Significance Test P-Value:")
+  print(pf(summary(model)$fstatistic[1],summary(model)$fstatistic[2],summary(model)$fstatistic[3],lower.tail=FALSE))
+  
+}
+
+```
+
+
+```{r}
+assumption_tester(chosen_model_uninf)
+```
+
+**The Shapiro-Wilk test and the qq plot indicate non-normality of errors**
+
+**The constant variance assumption (based on the fitted vs residuals graph and the BP-test) also does appear to be violated **
+
+**We can see that the VIF values for quite a few of the predictors are fairly high if we go with a threshold of 5. There does appear to be high multicollinearity **
+
+**The p-value of the overall significance test is almost 0, which means that the model is definitely significant**
+
+
+### Normality Assumption
+
+
+**We can consider the Box-Cox Transformation method since our response variable (MSRP) is strictly positive**
+
+```{r}
+boxcox(chosen_model_uninf, plotit = TRUE, lambda = seq(0.2, 0.5, by = 0.1))
+```
+
+
+From this, we see that λ = 0.4 is extremely close to the maximum and within the confidence interval.
+
+
+**We can now fit a model with the transformation of λ = 0.4 applied to the response variable: **
+
+
+```{r}
+
+
+chosen_model_trans1 = lm(formula = (((MSRP ^ 0.4) - 1) / 0.4)  ~ Make + Engine.Fuel.Type + Engine.HP + Engine.Cylinders + 
+    Transmission.Type + Driven_Wheels + Number.of.Doors + Vehicle.Size + 
+    highway.MPG + ReleasedYearsAgo + I(Engine.HP^2) + I(ReleasedYearsAgo^2) + 
+    I(city.mpg^2) + I(highway.MPG^2), data = data_train, subset = cox_sub)
+
+assumption_tester(chosen_model_trans1)
+
+
+```
+
+**Since our λ is somewhat close to 0, we also consider a log transformation on the dependant variable:**
+
+```{r}
+
+chosen_model_trans2 = lm(formula = log(MSRP) ~ Make + Engine.Fuel.Type + Engine.HP + Engine.Cylinders + 
+    Transmission.Type + Driven_Wheels + Number.of.Doors + Vehicle.Size + 
+    highway.MPG + ReleasedYearsAgo + I(Engine.HP^2) + I(ReleasedYearsAgo^2) + 
+    I(city.mpg^2) + I(highway.MPG^2), data = data_train, subset = cox_sub)
+
+assumption_tester(chosen_model_trans2)
+
+```
+
+**Using the log transformation, we have satisfied the normality assumption.**
+
+**We can see that we have improved the p-value of the Shapiro-Wilk normality test from 7.194e-16 to a value of 0.214. This is a substantial improvement. **
+
+**Additionally, the histogram of the residuals and the Q-Q Plot are much better than before, both indicating the same progress.**
+
+**While the adjusted R-Squared for the log transformed model is slightly lower, we still prefer this model since it satisfies the normality assumption**
+
+
+### Collinearity
+
+```{r}
+summary(chosen_model_trans2)
+
+print("VIF:")
+vif(chosen_model_trans2)[vif(chosen_model_trans2) > 5]
+```
+
+
+**As we can see from the VIF results, there are a few predictors which show signs of multicollinearity. We can start by removing the predictor Engine.Cylinders, since all the dummy variables associated to it have high VIFs and their p-values are also fairly high (from the summary).**
+
+
+
+```{r}
+chosen_model_drop1 = lm(formula = log(MSRP) ~ Make + Engine.Fuel.Type + Engine.HP +
+    Transmission.Type + Driven_Wheels + Number.of.Doors + 
+    Vehicle.Size + highway.MPG + ReleasedYearsAgo + I(Engine.HP^2) + 
+    I(ReleasedYearsAgo^2) + I(city.mpg^2) + I(highway.MPG^2), 
+    data = data_train, subset = cox_sub)
+
+```
+
+
+```{r}
+assumption_tester(chosen_model_drop1)
+summary(chosen_model_drop1)
+```
+
+**Our Fitted vs Residuals plot still does not look perfect, but the changes we have made have tremendously improved it. It has a diagonal dip at the top right, which appears to be due to the limit we placed on the prices (this guess is based on some reading online).**
+
+**Our Normal Q-Q Plot looks good, and so does the histogram of residuals. These are, once again, big improvements on the original assumption plots we had created.**
+
+**We choose to keep the remaining predictors with high VIF values. We make this decision since all the predictors with high VIFs are probably caused due to the inclusion of polynomial predictors of the same variables, and all of these predictors are significant to the model (as visible in the summary). So, it makes sense to retain them.**
+
+**Once again, though our adjusted R Squared value has slightly decreased, we still prefer this model with the dropped predictor.**
+
+**We choose this model, chosen_model_drop1, as our final model for the purpose of this report.**
+
+
+# Results
+
+## Chosen Model
+
+**We have chosen the model "chosen_model_drop1" as our final model. Here are the predictors it utilizes: **
+
+1) Make
+2) Engine.Fuel.Type 
+3) Engine.HP
+4) Transmission.Type 
+5) Driven_Wheels 
+6) Number.of.Doors 
+7) Vehicle.Size
+8) highway.MPG
+9) ReleasedYearsAgo
+10) I(Engine.HP^2)
+11) I(ReleasedYearsAgo^2)
+12) I(city.mpg^2)
+13) I(highway.MPG^2)
+
+
+
+## Making Predictions
+
+**Here, we make predictions using the model we have chosen. We will use our test set, and then plot the predicted MSRP values against the actual MSRP values**
+
+Retrieving the predictions made by our model on the test data
+
+```{r}
+test_predictions_log = predict(chosen_model_drop1, newdata = data_test, type = "resp")
+
+test_predictions = exp(test_predictions_log)
+
+```
+
+Plotting:
+
+```{r}
+
+data = data.frame(
+  x= test_predictions,
+  y= data_test$MSRP
+)
+
+
+plot(data$x, data$y,
+     pch=1, 
+     cex=1, 
+     col="paleturquoise3",
+     xlab="Predicted Value of MSRP", ylab="Actual Value of MSRP",
+     main="Predicted vs Actual MSRP"
+     )
+
+abline(0,1, col="navyblue",  lwd = 2)
+
+```
+
+
+
+**Since we are plotting the predicted vs the actual MSRPs of the test data, we expect the chart to be oriented at 45 degrees positively, as depicted by the dark blue line. Our predictions are fairly closely matched to the actual values of the MSRP. The general trend of the predictions is what we expect it to look like. **
+
+**It does seem that this model slightly overestimates the MSRP for low prices, and underestimates for the high prices. This is an interesting thing to note. Also, there is a minor increase in magnitude of absolute errors as the MSRP increases, which is expected. **
+
+## Usage
+
+Let us assume that BMW is planning to launch a new car with certain specifications as detailed in the cariable newdata_bmw below. We can use a model to predict the price of this BMW with our model! Creating a prediction interval:
+
+```{r}
+newdata_bmw = data.frame(Make="BMW", Engine.Fuel.Type="gasoline", Engine.HP = 220, Transmission.Type = "AUTOMATIC", Driven_Wheels = "rear wheel drive" , Number.of.Doors = "4", Vehicle.Size = "Midsize", highway.MPG = 25, city.mpg = 20, ReleasedYearsAgo = 0)
+
+log_pred_MSRP_bmw = predict(chosen_model_drop1, newdata_bmw, interval="predict", level = 0.9)
+
+exp(log_pred_MSRP_bmw)
+```
+
+
+A 90% prediction interval for the MSRP of such a BMW is (36524.49, 52991.81)
+
+
+Now, let's say that Honda wishes to release a car with the exact same specifications:
+
+```{r}
+newdata_honda = data.frame(Make="Honda", Engine.Fuel.Type="gasoline", Engine.HP = 220, Transmission.Type = "AUTOMATIC", Driven_Wheels = "rear wheel drive" , Number.of.Doors = "4", Vehicle.Size = "Midsize", highway.MPG = 25, city.mpg = 20, ReleasedYearsAgo = 0)
+
+log_pred_MSRP_hon = predict(chosen_model_drop1, newdata_honda, interval="predict", level = 0.9)
+
+exp(log_pred_MSRP_hon)
+```
+
+A 90% prediction interval for the MSRP of such a Honda is only (28943.97 41916.61)!
+
+
+Based on our model, a Honda is priced much lower than a BMW even though both of them have the exact specifications. This may not be surprising, but that is actually good! It is a common belief that similarly "specced" cars cost more when bought from premium brands. Our model says so too!
+
+Let's say that a car buyer is in the market for a Honda of these rough specifications, and they see a deal for a model which meets these specifications for $29,999. They can say with some confidence that they have a good deal based on our regression model! Such predictions can help consumers make very informed decisions, which is one of the potential use cases of our project.
+
+
+## Expansion/Further Additions
+
+* This model restricts itself to gasoline and diesel vehicles. In a time where electric cars are all the rage, given the right data and a longer time period, we can consider creating a model for electric cars as well. 
+
+* There are many other car features, knowledge of  which can potentially help make better predictions. Examples of such predictors include engine torque, interior materials, safety ratings, engine aspiration (turbocharged, supercharged, natural), seating capacity, and many others.
+
+* There is an even bigger potential in the market of used cars. There, factors like age, mileage, crash-history, owner count, exterior and interior condition, and many different things come into additional consideration. That is a very interesting direction in which such a project can be taken!
+
+
+
+## Appendix
+
+**Team Members**
+
+1) Chaitanya Sood
+2) Alex Garcia
+3) Tyler Park
+4) Yeonjun Jung
+
+
+
+**A big thanks to the Professor and the course staff for a great semester in STAT-420 from our team!**
+
+
+
+
+
+
